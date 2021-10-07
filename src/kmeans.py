@@ -25,6 +25,40 @@ class KMeans():
         self.n_clusters = n_clusters
         self.means = None
 
+    def euclidean_distances(self, X, Y):  #copied from HW2 code
+        euclidean = np.zeros((X.shape[0], Y.shape[0]))
+        x_ind = 0
+        for row_x in X:
+            y_ind = 0
+            for row_y in Y:
+                euclidean[x_ind, y_ind] = np.sqrt((np.square(row_x - row_y)).sum())
+                y_ind += 1
+            x_ind += 1
+        return euclidean
+
+    def update_assignments(self, features, means):
+        distances = self.euclidean_distances(features, means)
+        assignments = np.argmin(distances, axis=1)
+        return assignments
+
+    def update_means(self, features, indices):
+        meanarray = np.zeros((self.n_clusters, features.shape[1]))
+        samplenum = np.zeros((self.n_clusters,),dtype=int)
+        for ind in range(indices.shape[0]):
+            meanarray[indices[ind]] += features[ind]
+            samplenum[indices[ind]] += 1
+        for i in range(self.n_clusters):
+            meanarray[i] /= samplenum[i]
+
+        if 0 in samplenum: #empty cluster edge case - if a cluster empty, assign random mean value from given samples to it
+            np.random.seed()
+            for i in range(self.n_clusters):
+                if samplenum[i] == 0:
+                    meanarray[i] = features[np.random.choice(features.shape[0],1)]
+
+        self.means = meanarray
+        return
+
     def fit(self, features):
         """
         Fit KMeans to the given data using `self.n_clusters` number of clusters.
@@ -36,7 +70,18 @@ class KMeans():
         Returns:
             None (saves model - means - internally)
         """
-        raise NotImplementedError()
+        np.random.seed()
+        randmeans = np.random.choice(features.shape[0],self.n_clusters) #randomly select k means from features samples
+        self.means = features[randmeans]
+
+        newassignments = self.update_assignments(features, self.means) #returns index of self.means that matches cluster of sample
+        self.update_means(features, newassignments) #update means of initial clusters
+        oldassignments = []
+        while np.array_equal(oldassignments, newassignments) == False:
+            oldassignments = newassignments
+            newassignments = self.update_assignments(features, self.means) #update cluster assignments based on new means
+            self.update_means(features, newassignments) #update means based on new cluster assignments
+
 
     def predict(self, features):
         """
@@ -51,4 +96,8 @@ class KMeans():
                 of size (n_samples,). Each element of the array is the index of the
                 cluster the sample belongs to.
         """
-        raise NotImplementedError()
+        meandist = self.euclidean_distances(features, self.means)
+
+        predictions = np.argmin(meandist, axis=1)
+
+        return predictions

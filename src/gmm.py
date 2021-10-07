@@ -8,24 +8,6 @@ class GMM():
         This class implements a Gaussian Mixture Model updated using expectation
         maximization.
 
-        A useful tutorial:
-            https://campuspro-uploads.s3.us-west-2.amazonaws.com/63aa7cea-5e9c-4b62-96b7-8bbf3bc31b76/3a1d9101-8748-4e85-9830-4e45ffe1ca8d/EM%20derivations.pdf
-
-        The EM algorithm for GMMs has two steps:
-
-        1. Update posteriors (assignments to each Gaussian)
-        2. Update Gaussian parameters (means, variances, and priors for each Gaussian)
-
-        While you only have to implement the fit and predict functions to pass the
-        test cases, we recommend that you break these two steps apart into separate
-        functions. We have provided a template for you to put your code in.
-
-        Use only numpy to implement this algorithm.
-
-        This function MUST, after running 'fit', have variables named 'means' and
-        'covariances' in order to pass the test cases. These variables are checked by the
-        test cases to make sure you have recovered cluster parameters accurately.
-
         The fit and predict functions are implemented for you. To complete the implementation,
         you must implement:
             - _e_step
@@ -114,11 +96,6 @@ class GMM():
             2. Calculate the posterior probability for each point under each Gaussian
             3. Return the posterior probability (assignments).
         
-        This function should call your implementation of of _posterior which in turn calls 
-        _log_likelihood (which should call
-        multvariate_normal.logpdf). This should use the Gaussian parameter contained in
-        self.means, self.covariance, and self.mixing_weights
-
         Arguments:
             features {np.ndarray} -- Features to apply means, covariance, and mixing_weights
                 to.
@@ -127,7 +104,12 @@ class GMM():
             np.ndarray -- Posterior probabilities to each Gaussian (shape is
                 (features.shape[0], self.n_clusters))
         """
-        raise NotImplementedError()
+        pos_probs = np.zeros((features.shape[0], self.n_clusters))
+
+        for gaussian in range(self.n_clusters): #posterior returns sample size array for each gausian - each column of returned array
+            pos_probs[:,gaussian] = self._posterior(features, gaussian)
+
+        return pos_probs
 
     def _m_step(self, features, assignments):
         """
@@ -137,13 +119,6 @@ class GMM():
             1. Update the means with the mu_j update in Slide 24.
             2. Update the mixing_weights with the w_j update in Slide 24
             3. Update the covariance matrix with the sigma_j update in Slide 24.
-
-        Slide 24 is in these slides: 
-            https://github.com/NUCS349/nucs349.github.io/blob/master/lectures/eecs349_gaussian_mixture_models.pdf
-
-        NOTE: When updating the parameters of the Gaussian you always use the output of
-        the E step taken before this M step (e.g. update the means, mixing_weights, and covariances 
-        simultaneously).
 
         Arguments:
             features {np.ndarray} -- Features to update means and covariances, given the
@@ -156,20 +131,28 @@ class GMM():
             covariances -- Updated covariances
             mixing_weights -- Updated mixing weights
         """
-        raise NotImplementedError()
+        responsibilities = assignments.sum(axis=0)
+
+        mixing_weights = responsibilities / features.shape[0]
+
+        means = np.dot(assignments.T, features)
+        for column in range(means.shape[1]):
+            means[: , column] /= responsibilities.T
+
+        covariances = np.zeros((self.n_clusters, features.shape[1]))
+        for g in range(self.n_clusters):
+            sub = features - means[g]
+            subsqr = np.square(sub)
+            prod = subsqr * assignments[:,g][:, None]
+            sum = prod.sum(axis=0)
+            covariances[g]=sum
+        for column in range(covariances.shape[1]):
+            covariances[:, column] /= responsibilities.T
+
+        return means, covariances, mixing_weights
 
     def _init_covariance(self, n_features):
-        """
-        Initialize the covariance matrix given the covariance_type (spherical or
-        diagonal). If spherical, each feature is treated the same (has equal covariance).
-        If diagonal, each feature is treated independently (n_features covariances).
-
-        Arguments:
-            n_features {int} -- Number of features in the data for clustering
-
-        Returns:
-            [np.ndarray] -- Initial covariances (use np.random.rand)
-        """
+        
         if self.covariance_type == 'spherical':
             return np.random.rand(self.n_clusters)
         elif self.covariance_type == 'diagonal':
@@ -177,24 +160,6 @@ class GMM():
 
     def _log_likelihood(self, features, k_idx):
         """
-        Compute the likelihood of the features given the index of the Gaussian
-        in the mixture model. This function compute the log multivariate_normal
-        distribution for features given the means and covariance of the ```k_idx```th
-        Gaussian. To do this, you can use the function:
-
-            scipy.stats.multivariate_normal.logpdf
-
-        Read the documentation of this function to understand how it is used here:
-
-            https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.stats.multivariate_normal.html
-
-        Once the raw likelihood is computed, incorporate the mixing_weights for the Gaussian
-        via:
-
-            log(mixing_weight) + logpdf
-
-        Where logpdf is the output of multivariate_normal.
-
         Arguments:
             features {np.ndarray} -- Features to compute multivariate_normal distribution
                 on.
@@ -204,7 +169,10 @@ class GMM():
         Returns:
             np.ndarray -- log likelihoods of each feature given a Gaussian.
         """
-        raise NotImplementedError()
+        logpdf = multivariate_normal.logpdf(features, self.means[k_idx], self.covariances[k_idx])
+        logpdf *= self.mixing_weights[k_idx]
+
+        return logpdf
 
     def _overall_log_likelihood(self, features):
         denom = [
